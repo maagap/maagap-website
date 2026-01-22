@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { db } from '@/firebase.config.js';
+import { db } from '@/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useParams } from 'next/navigation';
 

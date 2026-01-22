@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
-import { db } from '@/firebase.config.js';
+import { db } from '@/firebase';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 
 export default function GalleryPage() {

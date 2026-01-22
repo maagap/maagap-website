@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { db, storage } from '@/firebase.config.js';
+import { db, storage } from '@/firebase';
 import { 
   collection, getDocs, addDoc, updateDoc, deleteDoc, doc, 
   query, orderBy, serverTimestamp, getDoc, setDoc 
