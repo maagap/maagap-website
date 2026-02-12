@@ -10,7 +10,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
 // TRANSACTIONS VIEW
-export function TransactionsView({ transactions, members, user, onRefresh }: any) {
+export function TransactionsView({ transactions, members, billingItems = [], user, onRefresh }: any) {
   const [showForm, setShowForm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -321,12 +321,21 @@ Please try again.`);
               <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
               <input
                 type="text"
+                list="billing-items-list-tx"
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                 className="input-field"
-                placeholder="e.g., Membership Fee, Donation, Expense"
+                placeholder="Select billing item or type custom..."
                 required
               />
+              <datalist id="billing-items-list-tx">
+                {billingItems.map((item: BillingItem) => (
+                  <option key={item.id} value={item.name} />
+                ))}
+              </datalist>
+              {billingItems.length > 0 && (
+                <p className="text-xs text-gray-500 mt-1">💡 Select from billing items or type custom category</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Member (Optional)</label>
@@ -1365,7 +1374,7 @@ export function ReportsView({ transactions, members }: any) {
 }
 
 // MEMBERS ASSISTANCE FUNDS VIEW
-export function MembersAssistanceView({ transactions, members, user, onRefresh }: any) {
+export function MembersAssistanceView({ transactions, members, billingItems = [], user, onRefresh }: any) {
   const [showForm, setShowForm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1417,6 +1426,37 @@ export function MembersAssistanceView({ transactions, members, user, onRefresh }
           date: new Date(formData.date),
           createdAt: new Date(),
         });
+        // Auto-update billing record if member selected and type is IN
+        if (formData.memberId && formData.type === 'IN') {
+          try {
+            const txMonth = formData.date.substring(0, 7);
+            const bq = query(
+              collection(db, 'billingRecords'),
+              where('memberId', '==', formData.memberId),
+              where('status', '==', 'pending')
+            );
+            const bSnap = await getDocs(bq);
+            let bestMatch: any = null;
+            bSnap.docs.forEach(docSnap => {
+              const r = { id: docSnap.id, ...docSnap.data() } as any;
+              const catMatch = formData.category && r.billingItemName &&
+                r.billingItemName.toLowerCase().includes(formData.category.toLowerCase());
+              const monMatch = r.month === txMonth;
+              if (catMatch && monMatch) bestMatch = r;
+              else if (!bestMatch && catMatch) bestMatch = r;
+              else if (!bestMatch && monMatch) bestMatch = r;
+              else if (!bestMatch) bestMatch = r;
+            });
+            if (bestMatch) {
+              await updateDoc(doc(db, 'billingRecords', bestMatch.id), {
+                status: 'paid',
+                paidDate: new Date(formData.date),
+              });
+            }
+          } catch (billingErr) {
+            console.error('Billing update error:', billingErr);
+          }
+        }
         showAlert('success', 'SUCCESS', `Transaction has been created successfully.`);
       }
       
@@ -1705,11 +1745,21 @@ Please try again.`);
               <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
               <input
                 type="text"
+                list="billing-items-list-ma"
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                 className="input-field"
+                placeholder="Select billing item or type custom..."
                 required
               />
+              <datalist id="billing-items-list-ma">
+                {billingItems.map((item: BillingItem) => (
+                  <option key={item.id} value={item.name} />
+                ))}
+              </datalist>
+              {billingItems.length > 0 && (
+                <p className="text-xs text-gray-500 mt-1">💡 Select from billing items or type custom</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Member (Optional)</label>
@@ -1820,7 +1870,7 @@ Please try again.`);
 }
 
 // MAAGAP FUND VIEW
-export function MAAGAPFundView({ transactions, members, user, onRefresh }: any) {
+export function MAAGAPFundView({ transactions, members, billingItems = [], user, onRefresh }: any) {
   const [showForm, setShowForm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1872,6 +1922,37 @@ export function MAAGAPFundView({ transactions, members, user, onRefresh }: any) 
           date: new Date(formData.date),
           createdAt: new Date(),
         });
+        // Auto-update billing record if member selected and type is IN
+        if (formData.memberId && formData.type === 'IN') {
+          try {
+            const txMonth = formData.date.substring(0, 7);
+            const bq = query(
+              collection(db, 'billingRecords'),
+              where('memberId', '==', formData.memberId),
+              where('status', '==', 'pending')
+            );
+            const bSnap = await getDocs(bq);
+            let bestMatch: any = null;
+            bSnap.docs.forEach(docSnap => {
+              const r = { id: docSnap.id, ...docSnap.data() } as any;
+              const catMatch = formData.category && r.billingItemName &&
+                r.billingItemName.toLowerCase().includes(formData.category.toLowerCase());
+              const monMatch = r.month === txMonth;
+              if (catMatch && monMatch) bestMatch = r;
+              else if (!bestMatch && catMatch) bestMatch = r;
+              else if (!bestMatch && monMatch) bestMatch = r;
+              else if (!bestMatch) bestMatch = r;
+            });
+            if (bestMatch) {
+              await updateDoc(doc(db, 'billingRecords', bestMatch.id), {
+                status: 'paid',
+                paidDate: new Date(formData.date),
+              });
+            }
+          } catch (billingErr) {
+            console.error('Billing update error:', billingErr);
+          }
+        }
         showAlert('success', 'SUCCESS', `Transaction has been created successfully.`);
       }
       
@@ -2160,11 +2241,21 @@ Please try again.`);
               <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
               <input
                 type="text"
+                list="billing-items-list-mf"
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                 className="input-field"
+                placeholder="Select billing item or type custom..."
                 required
               />
+              <datalist id="billing-items-list-mf">
+                {billingItems.map((item: BillingItem) => (
+                  <option key={item.id} value={item.name} />
+                ))}
+              </datalist>
+              {billingItems.length > 0 && (
+                <p className="text-xs text-gray-500 mt-1">💡 Select from billing items or type custom</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Member (Optional)</label>

@@ -5,7 +5,6 @@ export type UserRole = 'admin' | 'treasurer' | 'member' | 'maggot';
 export interface User {
   id: string;
   email: string;
-  name?: string;
   role: UserRole;
   approved: boolean;
   createdAt: Date;
@@ -14,7 +13,6 @@ export interface User {
 export interface Member {
   id: string;
   userId?: string;
-  idNumber?: string;
   
   // Basic Info
   membershipType: MembershipType;
@@ -125,7 +123,6 @@ export interface Transaction {
   id: string;
   receiptNumber: string;
   type: 'IN' | 'OUT';
-  fundType: 'Members Assistance Funds' | 'MAAGAP Fund';
   date: Date;
   amount: number;
   category: string;

@@ -1,162 +1,130 @@
-# MAAGAP Kuwait Website
+# MAAGAP Financial Management System
 
-Official dynamic website for MAAGAP (Multigeneration of Active Apostolic Guardians Association of the Philippines) - Kuwait Chapter
+Progressive Web Application para sa Multi Generation of Active Apostolic Guardians Association of the Philippines (MAAGAP), Inc.
+
+![MAAGAP Logo](public/logo.png)
+
+## ⚠️ IMPORTANTE - READ FIRST!
+
+**Before running the app, setup Firebase and Cloudinary first!**
+
+See **FIREBASE-SETUP.md** for complete step-by-step instructions.
+
+### Quick Checklist:
+- [ ] Firestore Rules published
+- [ ] Email/Password Authentication enabled
+- [ ] Cloudinary upload preset created (`maagap_uploads`, Unsigned mode)
+- [ ] Environment variables configured
+- [ ] First admin user approved in Firestore
 
 ## Features
 
-- ✅ Fully Dynamic PWA (Progressive Web App)
-- ✅ Member Registration System
-- ✅ Admin Dashboard with Member Management
-- ✅ Financial Management (IN/OUT transactions in KWD)
-- ✅ Gallery with Cloudinary Integration
-- ✅ Member Types: Maggot / Member
-- ✅ Status Management: Active / Inactive
-- ✅ Responsive Design with Beautiful Animations
-- ✅ Firebase Backend (Firestore + Storage)
-- ✅ Vercel Deployment Ready
-- ✅ Custom Favicon & App Icons
+✅ **Member Registration** - Complete member information form
+✅ **Maggot Registration** - Simplified registration  
+✅ **Financial Transactions** - IN/OUT with receipt numbers
+✅ **Payment Items** - Monthly payment tracking
+✅ **Statement of Accounts** - Complete financial reports
+✅ **User Management** - Admin approval system
+✅ **PWA Support** - Install as mobile/desktop app
 
-## Tech Stack
-
-- **Frontend**: Next.js 14, React, Tailwind CSS, Framer Motion
-- **Backend**: Firebase (Firestore, Storage, Authentication)
-- **Media**: Cloudinary for images
-- **Deployment**: Vercel
-- **PWA**: Installable on mobile devices
-
-## Setup Instructions
+## Quick Setup
 
 ### 1. Install Dependencies
-
-```bash
+\`\`\`bash
 npm install
-```
+\`\`\`
 
-### 2. Firebase Setup
+### 2. Environment Variables
+Naa na ang `.env.local` file with Firebase and Cloudinary credentials!
 
-Create a Firebase project at https://console.firebase.google.com/
+### 3. Setup Cloudinary Upload Preset
+1. Go to https://cloudinary.com/console
+2. Settings > Upload > Upload presets
+3. Click "Add upload preset"
+4. Name: `maagap_uploads`
+5. Signing Mode: **Unsigned**
+6. Folder: `maagap`
+7. Save
 
-Then create `.env.local` file:
+### 4. Setup Firebase Rules
+Go to Firebase Console > Firestore > Rules:
 
-```env
-NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
-NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=your_cloudinary_name
-```
+\`\`\`
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+\`\`\`
 
-### 3. Cloudinary Setup
-
-Create account at https://cloudinary.com and add your cloud name to `.env.local`
-
-### 4. Run Development Server
-
-```bash
+### 5. Run Development Server
+\`\`\`bash
 npm run dev
-```
+\`\`\`
 
 Visit http://localhost:3000
 
-### 5. Build for Production
+### 6. Create First Admin
+1. Register sa app
+2. Go to Firebase Console > Firestore
+3. Find your user sa `users` collection
+4. Edit:
+   - `status`: "approved"
+   - `role`: "admin"
+5. Login ulit
 
-```bash
-npm run build
-npm start
-```
+## Deploy to Vercel
 
-## Deployment to Vercel
+### Add Environment Variables sa Vercel:
+\`\`\`
+NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyCYLcQphD-kQVFbm-lVSU4sDFYuc-fj4Qo
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=maagap-financial.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=maagap-financial
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=maagap-financial.firebasestorage.app
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=478314562787
+NEXT_PUBLIC_FIREBASE_APP_ID=1:478314562787:web:821e0788d2bf289daef1d6
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=dugchj51b
+NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=maagap_uploads
+\`\`\`
 
-1. Push code to GitHub
-2. Import project in Vercel
+### Deploy Steps:
+1. Push to GitHub
+2. Import sa Vercel
 3. Add environment variables
 4. Deploy!
 
-## Project Structure
+## Firestore Collections
 
-```
-maagap-website/
-├── app/
-│   ├── page.js                 # Home page
-│   ├── layout.js              # Root layout with Navigation
-│   ├── register/              # Registration page
-│   ├── admin/                 # Admin dashboard
-│   ├── members/               # Member list & profiles
-│   ├── financial/             # Financial management
-│   ├── gallery/               # Photo gallery
-│   ├── about/                 # About page
-│   ├── maagap-prayer/         # MAAGAP Prayer page
-│   └── history-mkd/           # History page
-├── components/
-│   ├── Navigation.js          # Main navigation
-│   ├── Footer.js              # Footer component
-│   └── PWAInstallPrompt.js    # PWA install banner
-├── firebase.config.js         # Firebase configuration
-├── public/
-│   ├── manifest.json          # PWA manifest
-│   ├── icons/                 # App icons
-│   └── images/                # Static images
-└── package.json
-```
+Auto-create when first data is added:
 
-## Admin Features
+- **users** - User accounts and roles
+- **members** - Full member registrations
+- **maggots** - Maggot registrations
+- **transactions** - Financial IN/OUT records
+- **paymentItems** - Monthly payment templates
+- **memberPayments** - Individual member payments
 
-- View all registered members
-- Filter by Member Type (Maggot/Member)
-- Filter by Status (Active/Inactive)
-- Search members
-- Export member list
-- Update member information
-- Financial tracking (Income/Expenses in KWD)
+## User Roles
 
-## Member Registration
+- **Admin** - Full access, user approval
+- **Treasurer** - Manage finances
+- **Member** - Register members
+- **Maggot** - Register maggots
 
-Members can register with:
-- Full name (First, Middle, Last)
-- Contact information (Email, Phone)
-- Address in Kuwait
-- Date of Birth
-- Civil Status
-- Occupation
-- Member Type selection
-- Emergency contact
-- Auto-assigned Active status
+## Tech Stack
 
-## Financial Management
-
-Track organizational finances with:
-- Income transactions (IN)
-- Expense transactions (OUT)
-- Category management
-- Date-based filtering
-- Real-time balance calculation
-- KWD currency support
-- Detailed transaction history
-
-## Gallery
-
-- Upload activity photos via Cloudinary
-- Automatic optimization
-- Responsive image gallery
-- Event categorization
-- Admin-managed uploads
-
-## PWA Features
-
-- Installable on iOS and Android
-- Offline capability
-- App-like experience
-- Custom app icon
-- Splash screen
-
-## Support
-
-For technical support, contact the MAAGAP Kuwait tech team.
+- Next.js 14 + TypeScript
+- Firebase (Auth + Firestore)
+- Cloudinary (Images)
+- Tailwind CSS
+- PWA
 
 ---
 
-**"THE TRUTH STILL STAND"**
+**Developed by Godmisoft**  
+**Heber Mayormita © 2025**
 
-MAAGAP Kuwait © 2025
+**"THE TRUTH STILL STANDING"**

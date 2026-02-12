@@ -8,10 +8,12 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'maagap-blue': '#1e3a8a',
-        'maagap-red': '#991b1b',
-        'maagap-yellow': '#fbbf24',
-      },
+        maagap: {
+          blue: '#1e3a8a',
+          gold: '#fbbf24',
+          red: '#dc2626',
+        }
+      }
     },
   },
   plugins: [],

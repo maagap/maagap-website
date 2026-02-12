@@ -1,0 +1,1540 @@
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+import { Member, User, BillingRecord, Transaction } from '../types';
+import { doc, updateDoc, collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { uploadToCloudinary, dataURLtoFile } from '../lib/cloudinary';
+import { showAlert } from './ProfessionalAlert';
+import Image from 'next/image';
+
+interface MemberProfileViewProps {
+  member: Member;
+  user: User;
+  onRefresh: () => void;
+}
+
+export default function MemberProfileView({ member, user, onRefresh }: MemberProfileViewProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [billingRecords, setBillingRecords] = useState<BillingRecord[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loadingBilling, setLoadingBilling] = useState(true);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // Form state
+  const [formData, setFormData] = useState({
+    cpTel: member.cpTel || '',
+    dialect: member.dialect || '',
+    religion: member.religion || '',
+    height: member.height || '',
+    weight: member.weight || '',
+    bloodType: member.bloodType || '',
+    placeOfBirth: member.placeOfBirth || '',
+    phltNo: member.phltNo || '',
+    sssNo: member.sssNo || '',
+    membershipType: member.membershipType || 'Regular',
+    chapter: member.chapter || '',
+    province: member.province || '',
+    region: member.region || '',
+    provincialAddress: member.provincialAddress || '',
+    cityAddress: member.cityAddress || '',
+    officeAddress: member.officeAddress || '',
+    occupation: member.occupation || '',
+    emailAddress: member.emailAddress || '',
+    spouseName: member.spouseName || '',
+    spouseOccupation: member.spouseOccupation || '',
+    spouseCompany: member.spouseCompany || '',
+    numberOfChildren: member.numberOfChildren || 0,
+    fatherName: member.fatherName || '',
+    motherName: member.motherName || '',
+    emergencyContact: {
+      name: member.emergencyContact?.name || '',
+      relationship: member.emergencyContact?.relationship || '',
+    },
+    education: {
+      elementary: { 
+        school: member.education?.elementary?.school || '', 
+        course: member.education?.elementary?.course || '', 
+        dateCompleted: member.education?.elementary?.dateCompleted || '' 
+      },
+      secondary: { 
+        school: member.education?.secondary?.school || '', 
+        course: member.education?.secondary?.course || '', 
+        dateCompleted: member.education?.secondary?.dateCompleted || '' 
+      },
+      vocational: { 
+        school: member.education?.vocational?.school || '', 
+        course: member.education?.vocational?.course || '', 
+        dateCompleted: member.education?.vocational?.dateCompleted || '' 
+      },
+      college: { 
+        school: member.education?.college?.school || '', 
+        course: member.education?.college?.course || '', 
+        dateCompleted: member.education?.college?.dateCompleted || '' 
+      },
+      graduate: { 
+        school: member.education?.graduate?.school || '', 
+        course: member.education?.graduate?.course || '', 
+        dateCompleted: member.education?.graduate?.dateCompleted || '' 
+      },
+    },
+    references: member.references || [
+      { name: '', address: '', telCp: '' },
+      { name: '', address: '', telCp: '' },
+      { name: '', address: '', telCp: '' },
+    ],
+  });
+
+  // Load billing records and transactions
+  useEffect(() => {
+    const loadBillingData = async () => {
+      try {
+        setLoadingBilling(true);
+        
+        // Load billing records for this member
+        const billingQuery = query(
+          collection(db, 'billingRecords'),
+          where('memberId', '==', member.id),
+          orderBy('createdAt', 'desc')
+        );
+        const billingSnap = await getDocs(billingQuery);
+        const billingData = billingSnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate() || new Date(),
+          paidDate: doc.data().paidDate?.toDate(),
+        } as BillingRecord));
+        setBillingRecords(billingData);
+
+        // Load member's transactions
+        const transactionsQuery = query(
+          collection(db, 'transactions'),
+          where('memberId', '==', member.id),
+          orderBy('date', 'desc')
+        );
+        const transSnap = await getDocs(transactionsQuery);
+        const transData = transSnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          date: doc.data().date?.toDate() || new Date(),
+          createdAt: doc.data().createdAt?.toDate() || new Date(),
+        } as Transaction));
+        setTransactions(transData);
+
+        setLoadingBilling(false);
+      } catch (error) {
+        console.error('Error loading billing data:', error);
+        setLoadingBilling(false);
+      }
+    };
+
+    loadBillingData();
+  }, [member.id]);
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const dataUrl = reader.result as string;
+        const imageFile = dataURLtoFile(dataUrl, 'photo.jpg');
+        const photoUrl = await uploadToCloudinary(imageFile);
+
+        await updateDoc(doc(db, 'members', member.id), {
+          photoUrl,
+          updatedAt: new Date(),
+        });
+
+        showAlert('success', 'SUCCESS', 'Photo updated successfully!');
+        onRefresh();
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      showAlert('error', 'ERROR', `Failed to upload photo.
+
+Please try again.`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await updateDoc(doc(db, 'members', member.id), {
+        ...formData,
+        updatedAt: new Date(),
+      });
+
+      showAlert('success', 'SUCCESS', 'Profile updated successfully!');
+      setIsEditing(false);
+      onRefresh();
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      showAlert('error', 'ERROR', `Failed to update profile.
+
+Please try again.`);
+    }
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      showAlert('error', 'ERROR', 'New passwords do not match!');
+      return;
+    }
+
+    if (passwordData.newPassword.length < 6) {
+      showAlert('error', 'ERROR', 'Password must be at least 6 characters long!');
+      return;
+    }
+
+    try {
+      const { EmailAuthProvider, reauthenticateWithCredential, updatePassword } = await import('firebase/auth');
+      const { auth } = await import('../lib/firebase');
+      
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        showAlert('error', 'ERROR', 'No user logged in!');
+        return;
+      }
+
+      // Re-authenticate user
+      const credential = EmailAuthProvider.credential(
+        currentUser.email!,
+        passwordData.currentPassword
+      );
+      await reauthenticateWithCredential(currentUser, credential);
+
+      // Update password
+      await updatePassword(currentUser, passwordData.newPassword);
+
+      showAlert('success', 'SUCCESS', 'Password changed successfully!');
+      setShowPasswordChange(false);
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+    } catch (error: any) {
+      console.error('Error changing password:', error);
+      if (error.code === 'auth/wrong-password') {
+        showAlert('error', 'ERROR', 'Current password is incorrect!');
+      } else {
+        showAlert('error', 'ERROR', `Failed to change password.
+
+Please try again.`);
+      }
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      const XLSX = await import('xlsx');
+
+      const exportData = {
+        'PERSONAL INFORMATION': {
+          'Full Name': `${member.firstName} ${member.middleName} ${member.lastName}`,
+          'Pseudonym': member.pseudonym,
+          'Date of Birth': member.dateOfBirth,
+          'Place of Birth': member.placeOfBirth,
+          'Age': member.age,
+          'Sex': member.sex,
+          'Civil Status': member.civilStatus,
+          'Religion': member.religion,
+          'Dialect': member.dialect,
+          'Height': member.height,
+          'Weight': member.weight,
+          'Blood Type': member.bloodType,
+        },
+        'CONTACT INFORMATION': {
+          'Mobile/Tel': formData.cpTel,
+          'Email': formData.emailAddress,
+          'Provincial Address': formData.provincialAddress,
+          'City Address': formData.cityAddress,
+          'Office Address': formData.officeAddress,
+        },
+        'MEMBERSHIP': {
+          'Membership Type': member.membershipType,
+          'Chapter': member.chapter,
+          'Province': member.province,
+          'Region': member.region,
+        },
+        'OCCUPATION': {
+          'Occupation': formData.occupation,
+          'PHLT No': member.phltNo,
+          'SSS No': member.sssNo,
+        },
+        'FAMILY': {
+          'Spouse Name': formData.spouseName,
+          'Spouse Occupation': formData.spouseOccupation,
+          'Spouse Company': formData.spouseCompany,
+          'Number of Children': formData.numberOfChildren,
+          'Father Name': member.fatherName,
+          'Mother Name': member.motherName,
+        },
+        'EMERGENCY CONTACT': {
+          'Name': formData.emergencyContact.name,
+          'Relationship': formData.emergencyContact.relationship,
+        },
+        'EDUCATION': {
+          'Elementary': `${member.education.elementary.school} - ${member.education.elementary.dateCompleted}`,
+          'Secondary': `${member.education.secondary.school} - ${member.education.secondary.dateCompleted}`,
+          'Vocational': `${member.education.vocational.school} - ${member.education.vocational.dateCompleted}`,
+          'College': `${member.education.college.school} - ${member.education.college.course} - ${member.education.college.dateCompleted}`,
+          'Graduate': `${member.education.graduate.school} - ${member.education.graduate.course} - ${member.education.graduate.dateCompleted}`,
+        },
+      };
+
+      const ws = XLSX.utils.json_to_sheet(
+        Object.entries(exportData).flatMap(([section, data]) => [
+          { Section: section, Field: '', Value: '' },
+          ...Object.entries(data).map(([field, value]) => ({
+            Section: '',
+            Field: field,
+            Value: value,
+          })),
+          { Section: '', Field: '', Value: '' },
+        ])
+      );
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'My Profile');
+
+      const filename = `MAAGAP_Profile_${member.firstName}_${member.lastName}.xlsx`;
+      XLSX.writeFile(wb, filename);
+
+      showAlert('success', 'SUCCESS', `Profile exported to Excel successfully.
+
+File: ${filename}`);
+    } catch (error) {
+      console.error('Error exporting:', error);
+      showAlert('error', 'ERROR', `Failed to export profile.
+
+Please try again.`);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    try {
+      const { default: jsPDF } = await import('jspdf');
+      require('jspdf-autotable');
+
+      const doc = new jsPDF() as any;
+      let yPos = 20;
+
+      // Add photo if available
+      if (member.photoUrl) {
+        try {
+          // Add photo in top right corner
+          doc.addImage(member.photoUrl, 'JPEG', 165, 10, 35, 35);
+        } catch (err) {
+          console.log('Could not add photo to PDF');
+        }
+      }
+
+      // Header with photo area placeholder
+      doc.setFontSize(20);
+      doc.setTextColor(0, 51, 153);
+      doc.text(`${member.firstName} ${member.middleName} ${member.lastName}`.toUpperCase(), 105, yPos, { align: 'center' });
+      
+      yPos += 8;
+      doc.setFontSize(12);
+      doc.setTextColor(128, 0, 128);
+      doc.text(`"${member.pseudonym}"`, 105, yPos, { align: 'center' });
+      
+      yPos += 10;
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`${formData.membershipType} Member | ${formData.chapter} Chapter`, 105, yPos, { align: 'center' });
+      
+      yPos += 12;
+
+      // Personal Information
+      doc.setFontSize(12);
+      doc.setTextColor(0, 51, 153);
+      doc.text('PERSONAL INFORMATION', 14, yPos);
+      yPos += 6;
+
+      doc.autoTable({
+        startY: yPos,
+        head: [],
+        body: [
+          ['Date of Birth:', member.dateOfBirth, 'Sex:', member.sex],
+          ['Place of Birth:', member.placeOfBirth, 'Civil Status:', member.civilStatus],
+          ['Age:', member.age?.toString() || '-', 'Religion:', member.religion],
+          ['Height:', member.height, 'Weight:', member.weight],
+          ['Blood Type:', member.bloodType, 'Dialect:', formData.dialect],
+        ],
+        theme: 'plain',
+        styles: { fontSize: 9, cellPadding: 2 },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 35 },
+          1: { cellWidth: 55 },
+          2: { fontStyle: 'bold', cellWidth: 35 },
+          3: { cellWidth: 55 },
+        }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 8;
+
+      // Contact Information
+      doc.setFontSize(12);
+      doc.setTextColor(0, 51, 153);
+      doc.text('CONTACT INFORMATION', 14, yPos);
+      yPos += 6;
+
+      doc.autoTable({
+        startY: yPos,
+        head: [],
+        body: [
+          ['Mobile/Tel:', formData.cpTel || '-'],
+          ['Email:', formData.emailAddress || '-'],
+          ['Provincial Address:', formData.provincialAddress || '-'],
+          ['City Address:', formData.cityAddress || '-'],
+          ['Office Address:', formData.officeAddress || '-'],
+        ],
+        theme: 'plain',
+        styles: { fontSize: 9, cellPadding: 2 },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 45 },
+          1: { cellWidth: 135 },
+        }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 8;
+
+      // Membership & Occupation
+      doc.setFontSize(12);
+      doc.setTextColor(0, 51, 153);
+      doc.text('MEMBERSHIP & OCCUPATION', 14, yPos);
+      yPos += 6;
+
+      doc.autoTable({
+        startY: yPos,
+        head: [],
+        body: [
+          ['Membership Type:', formData.membershipType, 'Chapter:', formData.chapter],
+          ['Province:', formData.province, 'Region:', formData.region],
+          ['Occupation:', formData.occupation || '-', 'PHLT No:', formData.phltNo || '-'],
+          ['SSS No:', formData.sssNo || '-', '', ''],
+        ],
+        theme: 'plain',
+        styles: { fontSize: 9, cellPadding: 2 },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 35 },
+          1: { cellWidth: 55 },
+          2: { fontStyle: 'bold', cellWidth: 35 },
+          3: { cellWidth: 55 },
+        }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 8;
+
+      // Family
+      doc.setFontSize(12);
+      doc.setTextColor(0, 51, 153);
+      doc.text('FAMILY BACKGROUND', 14, yPos);
+      yPos += 6;
+
+      doc.autoTable({
+        startY: yPos,
+        head: [],
+        body: [
+          ['Spouse:', formData.spouseName || '-', 'Occupation:', formData.spouseOccupation || '-'],
+          ['Company:', formData.spouseCompany || '-', 'Children:', formData.numberOfChildren?.toString() || '0'],
+          ['Father:', formData.fatherName || '-', 'Mother:', formData.motherName || '-'],
+        ],
+        theme: 'plain',
+        styles: { fontSize: 9, cellPadding: 2 },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 35 },
+          1: { cellWidth: 55 },
+          2: { fontStyle: 'bold', cellWidth: 35 },
+          3: { cellWidth: 55 },
+        }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 8;
+
+      // Education
+      doc.setFontSize(12);
+      doc.setTextColor(0, 51, 153);
+      doc.text('EDUCATIONAL BACKGROUND', 14, yPos);
+      yPos += 6;
+
+      const educationData = [
+        ['Elementary:', formData.education.elementary.school || '-', formData.education.elementary.dateCompleted || '-'],
+        ['Secondary:', formData.education.secondary.school || '-', formData.education.secondary.dateCompleted || '-'],
+        ['Vocational:', formData.education.vocational.school || '-', formData.education.vocational.dateCompleted || '-'],
+        ['College:', `${formData.education.college.school || '-'} (${formData.education.college.course || '-'})`, formData.education.college.dateCompleted || '-'],
+        ['Graduate:', `${formData.education.graduate.school || '-'} (${formData.education.graduate.course || '-'})`, formData.education.graduate.dateCompleted || '-'],
+      ];
+
+      doc.autoTable({
+        startY: yPos,
+        head: [],
+        body: educationData,
+        theme: 'plain',
+        styles: { fontSize: 9, cellPadding: 2 },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 30 },
+          1: { cellWidth: 120 },
+          2: { cellWidth: 30 },
+        }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 8;
+
+      // Emergency Contact
+      doc.setFontSize(12);
+      doc.setTextColor(0, 51, 153);
+      doc.text('EMERGENCY CONTACT', 14, yPos);
+      yPos += 6;
+
+      doc.autoTable({
+        startY: yPos,
+        head: [],
+        body: [
+          ['Name:', formData.emergencyContact.name || '-', 'Relationship:', formData.emergencyContact.relationship || '-'],
+        ],
+        theme: 'plain',
+        styles: { fontSize: 9, cellPadding: 2 },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 35 },
+          1: { cellWidth: 55 },
+          2: { fontStyle: 'bold', cellWidth: 35 },
+          3: { cellWidth: 55 },
+        }
+      });
+
+      // References (if any)
+      if (formData.references.some(ref => ref.name || ref.address || ref.telCp)) {
+        yPos = doc.lastAutoTable.finalY + 8;
+        
+        doc.setFontSize(12);
+        doc.setTextColor(0, 51, 153);
+        doc.text('CHARACTER REFERENCES', 14, yPos);
+        yPos += 6;
+
+        const refData = formData.references
+          .filter(ref => ref.name || ref.address || ref.telCp)
+          .map((ref, idx) => [
+            `${idx + 1}.`,
+            ref.name || '-',
+            ref.address || '-',
+            ref.telCp || '-'
+          ]);
+
+        doc.autoTable({
+          startY: yPos,
+          head: [['#', 'Name', 'Address', 'Contact']],
+          body: refData,
+          theme: 'grid',
+          headStyles: { fillColor: [0, 51, 153], fontSize: 9 },
+          styles: { fontSize: 8, cellPadding: 2 },
+          columnStyles: {
+            0: { cellWidth: 8 },
+            1: { cellWidth: 50 },
+            2: { cellWidth: 70 },
+            3: { cellWidth: 52 },
+          }
+        });
+      }
+
+      // Footer
+      const pageCount = doc.internal.getNumberOfPages();
+      doc.setFontSize(8);
+      doc.setTextColor(128, 128, 128);
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.text(`MAAGAP Guardians Member Profile - Generated: ${new Date().toLocaleDateString()}`, 105, 287, { align: 'center' });
+      }
+
+      const filename = `${member.firstName}_${member.lastName}_Profile.pdf`;
+      doc.save(filename);
+
+      showAlert('success', 'SUCCESS', `Profile exported to PDF successfully.
+
+File: ${filename}`);
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      showAlert('error', 'ERROR', `Failed to export to PDF.
+
+Please try again.`);
+    }
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-maagap-blue to-blue-600 text-white p-8 rounded-lg shadow-lg mb-6">
+        <div className="flex items-center gap-6">
+          {/* Photo */}
+          <div className="relative">
+            <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-lg">
+              {member.photoUrl ? (
+                <Image
+                  src={member.photoUrl}
+                  alt="Profile"
+                  width={128}
+                  height={128}
+                  className="object-cover w-full h-full"
+                />
+              ) : (
+                <div className="w-full h-full bg-gray-300 flex items-center justify-center text-4xl">
+                  👤
+                </div>
+              )}
+            </div>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoChange}
+              className="hidden"
+            />
+            <button
+              onClick={() => photoInputRef.current?.click()}
+              disabled={uploading}
+              className="absolute bottom-0 right-0 bg-white text-maagap-blue p-2 rounded-full shadow-lg hover:bg-gray-100"
+            >
+              {uploading ? '⏳' : '📷'}
+            </button>
+          </div>
+
+          {/* Info */}
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold">
+              {member.firstName} {member.middleName} {member.lastName}
+            </h1>
+            <p className="text-xl text-blue-100 mt-1">"{member.pseudonym}"</p>
+            <div className="mt-3 flex gap-4">
+              <span className="bg-white text-maagap-blue px-3 py-1 rounded-full text-sm font-semibold">
+                {member.membershipType}
+              </span>
+              <span className="bg-blue-500 px-3 py-1 rounded-full text-sm">
+                {member.chapter}
+              </span>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex flex-col gap-2">
+            <button onClick={handleExportExcel} className="btn-secondary bg-white text-maagap-blue">
+              📥 Export Excel
+            </button>
+            <button onClick={handleExportPDF} className="btn-secondary bg-white text-maagap-blue">
+              📄 Export PDF
+            </button>
+            {!isEditing && !showPasswordChange && (
+              <>
+                <button onClick={() => setIsEditing(true)} className="btn-primary bg-yellow-500">
+                  ✏️ Edit Profile
+                </button>
+                {member.status === 'approved' && (
+                  <button onClick={() => setShowPasswordChange(true)} className="btn-secondary bg-white text-maagap-blue">
+                    🔒 Change Password
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Change Password Form */}
+      {showPasswordChange && (
+        <div className="card mb-6">
+          <h2 className="text-xl font-bold mb-4">🔒 Change Password</h2>
+          <form onSubmit={handlePasswordChange} className="max-w-md">
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
+                <input
+                  type="password"
+                  value={passwordData.currentPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                  className="input-field"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                <input
+                  type="password"
+                  value={passwordData.newPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                  className="input-field"
+                  required
+                  minLength={6}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={passwordData.confirmPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                  className="input-field"
+                  required
+                  minLength={6}
+                />
+              </div>
+              <div className="flex gap-4 justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPasswordChange(false);
+                    setPasswordData({
+                      currentPassword: '',
+                      newPassword: '',
+                      confirmPassword: '',
+                    });
+                  }}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary">
+                  Change Password
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Edit Form */}
+      {isEditing ? (
+        <div className="card">
+          <h2 className="text-xl font-bold mb-4">Edit Profile Information</h2>
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mobile/Tel</label>
+              <input
+                type="text"
+                value={formData.cpTel}
+                onChange={(e) => setFormData({ ...formData, cpTel: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input
+                type="email"
+                value={formData.emailAddress}
+                onChange={(e) => setFormData({ ...formData, emailAddress: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Provincial Address</label>
+              <input
+                type="text"
+                value={formData.provincialAddress}
+                onChange={(e) => setFormData({ ...formData, provincialAddress: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">City Address</label>
+              <input
+                type="text"
+                value={formData.cityAddress}
+                onChange={(e) => setFormData({ ...formData, cityAddress: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Office Address</label>
+              <input
+                type="text"
+                value={formData.officeAddress}
+                onChange={(e) => setFormData({ ...formData, officeAddress: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            {/* Membership Section */}
+            <div className="md:col-span-2 border-t pt-4 mt-4">
+              <h3 className="text-lg font-bold text-maagap-blue mb-4">🎖️ Membership</h3>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Membership Type</label>
+              <select
+                value={formData.membershipType}
+                onChange={(e) => setFormData({ ...formData, membershipType: e.target.value as any })}
+                className="input-field"
+              >
+                <option value="Regular">Regular</option>
+                <option value="Associate">Associate</option>
+                <option value="Honorary">Honorary</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Chapter</label>
+              <input
+                type="text"
+                value={formData.chapter}
+                onChange={(e) => setFormData({ ...formData, chapter: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Province</label>
+              <input
+                type="text"
+                value={formData.province}
+                onChange={(e) => setFormData({ ...formData, province: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Region</label>
+              <input
+                type="text"
+                value={formData.region}
+                onChange={(e) => setFormData({ ...formData, region: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Occupation</label>
+              <input
+                type="text"
+                value={formData.occupation}
+                onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Dialect</label>
+              <input
+                type="text"
+                value={formData.dialect}
+                onChange={(e) => setFormData({ ...formData, dialect: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Religion</label>
+              <input
+                type="text"
+                value={formData.religion}
+                onChange={(e) => setFormData({ ...formData, religion: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Height</label>
+              <input
+                type="text"
+                value={formData.height}
+                onChange={(e) => setFormData({ ...formData, height: e.target.value })}
+                className="input-field"
+                placeholder="e.g., 5'8&quot;"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Weight</label>
+              <input
+                type="text"
+                value={formData.weight}
+                onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                className="input-field"
+                placeholder="e.g., 165 lbs"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Blood Type</label>
+              <input
+                type="text"
+                value={formData.bloodType}
+                onChange={(e) => setFormData({ ...formData, bloodType: e.target.value })}
+                className="input-field"
+                placeholder="e.g., O+"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Place of Birth</label>
+              <input
+                type="text"
+                value={formData.placeOfBirth}
+                onChange={(e) => setFormData({ ...formData, placeOfBirth: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">PHLT No</label>
+              <input
+                type="text"
+                value={formData.phltNo}
+                onChange={(e) => setFormData({ ...formData, phltNo: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">SSS No</label>
+              <input
+                type="text"
+                value={formData.sssNo}
+                onChange={(e) => setFormData({ ...formData, sssNo: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Number of Children</label>
+              <input
+                type="number"
+                value={formData.numberOfChildren}
+                onChange={(e) => setFormData({ ...formData, numberOfChildren: parseInt(e.target.value) || 0 })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Spouse Name</label>
+              <input
+                type="text"
+                value={formData.spouseName}
+                onChange={(e) => setFormData({ ...formData, spouseName: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Spouse Occupation</label>
+              <input
+                type="text"
+                value={formData.spouseOccupation}
+                onChange={(e) => setFormData({ ...formData, spouseOccupation: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Spouse Company</label>
+              <input
+                type="text"
+                value={formData.spouseCompany}
+                onChange={(e) => setFormData({ ...formData, spouseCompany: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Father's Name</label>
+              <input
+                type="text"
+                value={formData.fatherName}
+                onChange={(e) => setFormData({ ...formData, fatherName: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mother's Name</label>
+              <input
+                type="text"
+                value={formData.motherName}
+                onChange={(e) => setFormData({ ...formData, motherName: e.target.value })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Emergency Contact Name</label>
+              <input
+                type="text"
+                value={formData.emergencyContact.name}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  emergencyContact: { ...formData.emergencyContact, name: e.target.value }
+                })}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Relationship</label>
+              <input
+                type="text"
+                value={formData.emergencyContact.relationship}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  emergencyContact: { ...formData.emergencyContact, relationship: e.target.value }
+                })}
+                className="input-field"
+              />
+            </div>
+
+            {/* Education Section */}
+            <div className="md:col-span-2 border-t pt-4 mt-4">
+              <h3 className="text-lg font-bold text-maagap-blue mb-4">🎓 Education</h3>
+              
+              {/* Elementary */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className="md:col-span-3">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Elementary</label>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">School</label>
+                  <input
+                    type="text"
+                    value={formData.education.elementary.school}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        elementary: { ...formData.education.elementary, school: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Course/Track</label>
+                  <input
+                    type="text"
+                    value={formData.education.elementary.course}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        elementary: { ...formData.education.elementary, course: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Date Completed</label>
+                  <input
+                    type="text"
+                    value={formData.education.elementary.dateCompleted}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        elementary: { ...formData.education.elementary, dateCompleted: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+              </div>
+
+              {/* Secondary */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className="md:col-span-3">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Secondary</label>
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="School"
+                    value={formData.education.secondary.school}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        secondary: { ...formData.education.secondary, school: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Course/Track"
+                    value={formData.education.secondary.course}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        secondary: { ...formData.education.secondary, course: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Date Completed"
+                    value={formData.education.secondary.dateCompleted}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        secondary: { ...formData.education.secondary, dateCompleted: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+              </div>
+
+              {/* Vocational */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className="md:col-span-3">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Vocational</label>
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="School"
+                    value={formData.education.vocational.school}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        vocational: { ...formData.education.vocational, school: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Course"
+                    value={formData.education.vocational.course}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        vocational: { ...formData.education.vocational, course: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Date Completed"
+                    value={formData.education.vocational.dateCompleted}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        vocational: { ...formData.education.vocational, dateCompleted: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+              </div>
+
+              {/* College */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className="md:col-span-3">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">College</label>
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="School"
+                    value={formData.education.college.school}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        college: { ...formData.education.college, school: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Course"
+                    value={formData.education.college.course}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        college: { ...formData.education.college, course: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Date Completed"
+                    value={formData.education.college.dateCompleted}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        college: { ...formData.education.college, dateCompleted: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+              </div>
+
+              {/* Graduate */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className="md:col-span-3">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Graduate Studies</label>
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="School"
+                    value={formData.education.graduate.school}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        graduate: { ...formData.education.graduate, school: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Course"
+                    value={formData.education.graduate.course}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        graduate: { ...formData.education.graduate, course: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Date Completed"
+                    value={formData.education.graduate.dateCompleted}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      education: {
+                        ...formData.education,
+                        graduate: { ...formData.education.graduate, dateCompleted: e.target.value }
+                      }
+                    })}
+                    className="input-field"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* References Section */}
+            <div className="md:col-span-2 border-t pt-4 mt-4">
+              <h3 className="text-lg font-bold text-maagap-blue mb-4">📝 References</h3>
+              {formData.references.map((ref, idx) => (
+                <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Name</label>
+                    <input
+                      type="text"
+                      value={ref.name}
+                      onChange={(e) => {
+                        const newRefs = [...formData.references];
+                        newRefs[idx].name = e.target.value;
+                        setFormData({ ...formData, references: newRefs });
+                      }}
+                      className="input-field"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Address</label>
+                    <input
+                      type="text"
+                      value={ref.address}
+                      onChange={(e) => {
+                        const newRefs = [...formData.references];
+                        newRefs[idx].address = e.target.value;
+                        setFormData({ ...formData, references: newRefs });
+                      }}
+                      className="input-field"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Tel/CP</label>
+                    <input
+                      type="text"
+                      value={ref.telCp}
+                      onChange={(e) => {
+                        const newRefs = [...formData.references];
+                        newRefs[idx].telCp = e.target.value;
+                        setFormData({ ...formData, references: newRefs });
+                      }}
+                      className="input-field"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="md:col-span-2 flex gap-4 justify-end">
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary">
+                Save Changes
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : (
+        /* View Mode */
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Personal Info */}
+          <div className="card">
+            <h3 className="text-lg font-bold text-maagap-blue mb-4">📋 Personal Information</h3>
+            <div className="space-y-2 text-sm">
+              <InfoRow label="Date of Birth" value={member.dateOfBirth} />
+              <InfoRow label="Place of Birth" value={formData.placeOfBirth} />
+              <InfoRow label="Age" value={member.age?.toString() || '-'} />
+              <InfoRow label="Sex" value={member.sex} />
+              <InfoRow label="Civil Status" value={member.civilStatus} />
+              <InfoRow label="Religion" value={formData.religion} />
+              <InfoRow label="Dialect" value={formData.dialect} />
+              <InfoRow label="Height" value={formData.height} />
+              <InfoRow label="Weight" value={formData.weight} />
+              <InfoRow label="Blood Type" value={formData.bloodType} />
+            </div>
+          </div>
+
+          {/* Contact Info */}
+          <div className="card">
+            <h3 className="text-lg font-bold text-maagap-blue mb-4">📞 Contact Information</h3>
+            <div className="space-y-2 text-sm">
+              <InfoRow label="Mobile/Tel" value={formData.cpTel} />
+              <InfoRow label="Email" value={formData.emailAddress} />
+              <InfoRow label="Provincial Address" value={formData.provincialAddress} />
+              <InfoRow label="City Address" value={formData.cityAddress} />
+              <InfoRow label="Office Address" value={formData.officeAddress} />
+            </div>
+          </div>
+
+          {/* Membership Info */}
+          <div className="card">
+            <h3 className="text-lg font-bold text-maagap-blue mb-4">🎖️ Membership</h3>
+            <div className="space-y-2 text-sm">
+              <InfoRow label="Type" value={formData.membershipType} />
+              <InfoRow label="Chapter" value={formData.chapter} />
+              <InfoRow label="Province" value={formData.province} />
+              <InfoRow label="Region" value={formData.region} />
+            </div>
+          </div>
+
+          {/* Occupation */}
+          <div className="card">
+            <h3 className="text-lg font-bold text-maagap-blue mb-4">💼 Occupation</h3>
+            <div className="space-y-2 text-sm">
+              <InfoRow label="Occupation" value={formData.occupation} />
+              <InfoRow label="PHLT No" value={formData.phltNo} />
+              <InfoRow label="SSS No" value={formData.sssNo} />
+            </div>
+          </div>
+
+          {/* Family */}
+          <div className="card">
+            <h3 className="text-lg font-bold text-maagap-blue mb-4">👨‍👩‍👧‍👦 Family</h3>
+            <div className="space-y-2 text-sm">
+              <InfoRow label="Spouse" value={formData.spouseName} />
+              <InfoRow label="Spouse Occupation" value={formData.spouseOccupation} />
+              <InfoRow label="Spouse Company" value={formData.spouseCompany} />
+              <InfoRow label="Children" value={formData.numberOfChildren?.toString() || '0'} />
+              <InfoRow label="Father" value={formData.fatherName} />
+              <InfoRow label="Mother" value={formData.motherName} />
+            </div>
+          </div>
+
+          {/* Emergency Contact */}
+          <div className="card">
+            <h3 className="text-lg font-bold text-maagap-blue mb-4">🚨 Emergency Contact</h3>
+            <div className="space-y-2 text-sm">
+              <InfoRow label="Name" value={formData.emergencyContact.name} />
+              <InfoRow label="Relationship" value={formData.emergencyContact.relationship} />
+            </div>
+          </div>
+
+          {/* Education */}
+          <div className="card md:col-span-2">
+            <h3 className="text-lg font-bold text-maagap-blue mb-4">🎓 Education</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="font-semibold text-gray-700">Elementary</p>
+                <p>{formData.education.elementary.school || '-'}</p>
+                <p className="text-gray-600">{formData.education.elementary.course || '-'}</p>
+                <p className="text-gray-600 text-xs">{formData.education.elementary.dateCompleted || '-'}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-gray-700">Secondary</p>
+                <p>{formData.education.secondary.school || '-'}</p>
+                <p className="text-gray-600">{formData.education.secondary.course || '-'}</p>
+                <p className="text-gray-600 text-xs">{formData.education.secondary.dateCompleted || '-'}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-gray-700">Vocational</p>
+                <p>{formData.education.vocational.school || '-'}</p>
+                <p className="text-gray-600">{formData.education.vocational.course || '-'}</p>
+                <p className="text-gray-600 text-xs">{formData.education.vocational.dateCompleted || '-'}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-gray-700">College</p>
+                <p>{formData.education.college.school || '-'}</p>
+                <p className="text-gray-600">{formData.education.college.course || '-'}</p>
+                <p className="text-gray-600 text-xs">{formData.education.college.dateCompleted || '-'}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-gray-700">Graduate Studies</p>
+                <p>{formData.education.graduate.school || '-'}</p>
+                <p className="text-gray-600">{formData.education.graduate.course || '-'}</p>
+                <p className="text-gray-600 text-xs">{formData.education.graduate.dateCompleted || '-'}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* References */}
+          {formData.references && formData.references.length > 0 && formData.references.some(ref => ref.name || ref.address || ref.telCp) && (
+            <div className="card md:col-span-2">
+              <h3 className="text-lg font-bold text-maagap-blue mb-4">📝 References</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                {formData.references.filter(ref => ref.name || ref.address || ref.telCp).map((ref, idx) => (
+                  <div key={idx} className="border-l-4 border-maagap-blue pl-3">
+                    <p className="font-semibold">{ref.name || '-'}</p>
+                    <p className="text-gray-600">{ref.address || '-'}</p>
+                    <p className="text-gray-600">{ref.telCp || '-'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Contribution Status */}
+            <div className="card md:col-span-2">
+              <h3 className="text-lg font-bold text-maagap-blue mb-4">💰 Contribution Status</h3>
+              {loadingBilling ? (
+                <div className="text-center py-4 text-gray-500">Loading...</div>
+              ) : billingRecords.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p className="text-4xl mb-2">📋</p>
+                  <p>No billing records yet</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Item</th>
+                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Month</th>
+                        <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">Amount</th>
+                        <th className="px-4 py-2 text-center text-sm font-semibold text-gray-700">Status</th>
+                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Paid Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {billingRecords.map((record) => (
+                        <tr key={record.id} className={record.status === 'paid' ? 'bg-green-50' : 'bg-red-50'}>
+                          <td className="px-4 py-3 text-sm">{record.billingItemName}</td>
+                          <td className="px-4 py-3 text-sm">
+                            {new Date(record.month + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold">
+                            ₱{record.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {record.status === 'paid' ? (
+                              <span className="px-3 py-1 bg-green-500 text-white rounded-full text-xs font-semibold">
+                                ✓ PAID
+                              </span>
+                            ) : (
+                              <span className="px-3 py-1 bg-red-500 text-white rounded-full text-xs font-semibold">
+                                ✗ UNPAID
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            {record.paidDate ? new Date(record.paidDate).toLocaleDateString() : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gray-100">
+                      <tr>
+                        <td colSpan={2} className="px-4 py-3 text-sm font-semibold">Total:</td>
+                        <td className="px-4 py-3 text-sm text-right font-bold">
+                          ₱{billingRecords.reduce((sum, r) => sum + r.amount, 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td colSpan={2} className="px-4 py-3 text-sm">
+                          <span className="text-green-600 font-semibold">
+                            Paid: {billingRecords.filter(r => r.status === 'paid').length}
+                          </span>
+                          {' / '}
+                          <span className="text-red-600 font-semibold">
+                            Unpaid: {billingRecords.filter(r => r.status === 'pending').length}
+                          </span>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between py-1 border-b border-gray-100">
+      <span className="text-gray-600">{label}:</span>
+      <span className="font-medium">{value || '-'}</span>
+    </div>
+  );
+}
